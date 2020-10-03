@@ -28,14 +28,17 @@ import net.apolloclient.module.bus.event.ModuleEvent;
 import org.reflections.Reflections;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 /**
  * Creates modules of type {@link ModuleContainer} or {@link DraggableModuleContainer} by
@@ -56,13 +59,26 @@ public class ModuleFactory {
      * @param modsFolder folder for external modules / unused
      */
     public ModuleFactory(String localPath, File modsFolder) {
+        /*List<Class<?>> externalClasses = new ArrayList<>();
+        if (!modsFolder.isFile()) {
+            Apollo.log(modsFolder.getPath());
+            if (modsFolder.listFiles() != null) {
+                for (File file : modsFolder.listFiles()) {
+                    try {
+                        Class<?> c = loadExternalMod(file);
+                        if (c != null && !externalClasses.contains(c)) externalClasses.add(c);
+                    } catch (Exception e) {
+                        Apollo.error("Failed to load module: " + file.getName().replaceAll("/.jar/i", ""));
+                    }
+                }
+            }
+        }*/
         Reflections reflections = new Reflections(localPath);
 
         HashMap<ModContainer, CopyOnWriteArrayList<Method>> sharedMethods = new HashMap<>();
 
         CopyOnWriteArrayList<Class<?>> classes = new CopyOnWriteArrayList<>(reflections.getTypesAnnotatedWith(Module.class));
         classes.sort(Comparator.comparingInt(module -> module.getAnnotation(Module.class).priority()));
-
         for (Class<?> clazz : classes) {
             try {
                 ModContainer container = new ModuleContainer(clazz.getAnnotation(Module.class), clazz.newInstance());
@@ -70,6 +86,7 @@ public class ModuleFactory {
                 sharedMethods.put(container, new CopyOnWriteArrayList<>());
                 sharedMethods.get(container).addAll(this.register(container));
                 container.post(new InitializationEvent(container));
+                Apollo.log("Registered Module: " + container.getName());
                 modules.add(container);
             }
             catch (Exception e) {
@@ -77,6 +94,31 @@ public class ModuleFactory {
                 e.printStackTrace();
             }
         }
+        /*for (Class<?> clazz : externalClasses) {
+            try {
+                Annotation annotation = null;
+                for (Annotation a : clazz.getAnnotations()) {
+                    if (a.annotationType().getSimpleName().equals(Module.class.getSimpleName())) {annotation = a;}
+                }
+                if (annotation != null) {
+                    ModContainer container = new ModuleContainer(clazz.getDeclaredAnnotation(Module.class), clazz.newInstance());
+                    this.handleInstance(container);
+                    sharedMethods.put(container, new CopyOnWriteArrayList<>());
+                    sharedMethods.get(container).addAll(this.register(container));
+                    container.post(new InitializationEvent(container));
+                    Apollo.log("Registered Module: " + container.getName());
+                    modules.add(container);
+                }
+            }
+            catch (Exception e) {
+                try {
+                    Apollo.error("Unable to create module instance of " + clazz.getCanonicalName());
+                } catch (NullPointerException g) {
+                    e.printStackTrace();
+                }
+                e.printStackTrace();
+            }
+        }*/
 
         classes = new CopyOnWriteArrayList<>(reflections.getTypesAnnotatedWith(DraggableModule.class));
         classes.sort(Comparator.comparingInt(module -> module.getAnnotation(DraggableModule.class).priority()));
@@ -99,6 +141,54 @@ public class ModuleFactory {
         // TODO: EXTERNAL MOD LOADING!
 
         this.registerSharedListeners(sharedMethods);
+    }
+
+    /**
+     * Uses JAR files.
+     * @param mod The mod file.
+     * @author @SLLCoding
+     */
+    private Class<?> loadExternalMod(File mod) throws IOException, ClassNotFoundException {
+        if (mod.getName().toLowerCase().endsWith(".jar")) {
+            Apollo.log("Loading mod: " + mod.getName().replaceAll("/.jar/i", ""));
+
+            JarFile jarFile = new JarFile(mod);
+            Enumeration<JarEntry> e = jarFile.entries();
+
+            URL[] urls = { new URL("jar:file:" + mod.getPath() +"!/") };
+            URLClassLoader cl = URLClassLoader.newInstance(urls);
+
+            List<Class<?>> classes = new ArrayList<>();
+            while (e.hasMoreElements()) {
+                JarEntry je = e.nextElement();
+                if(je.isDirectory() || !je.getName().endsWith(".class")){
+                    continue;
+                }
+                // -6 because of .class
+                String className = je.getName().substring(0,je.getName().length()-6);
+                className = className.replace('/', '.');
+                Class<?> c = cl.loadClass(className);
+                classes.add(c);
+                Apollo.log(" - Loaded Class: " + c.getSimpleName());
+            }
+            Apollo.log("" + classes.size());
+            for (Class<?> clazz : classes) {
+                boolean isModule = false;
+                for (Annotation annotation : clazz.getAnnotations()) {
+                    Apollo.log(annotation.annotationType().getSimpleName());
+                    Apollo.log(Module.class.getSimpleName());
+                    if (annotation.annotationType().getSimpleName().equals(Module.class.getSimpleName())) {
+                        isModule = true;
+                    }
+                }
+                Apollo.log("" + isModule);
+                if (isModule) {
+                    Apollo.log("YAY " + clazz.getSimpleName());
+                    return clazz;
+                }
+            }
+        }
+        return null;
     }
 
     /**

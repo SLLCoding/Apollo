@@ -23,6 +23,8 @@ package net.apolloclient;
 import net.apolloclient.event.bus.EventBus;
 import net.apolloclient.module.bus.ModuleFactory;
 
+import javax.swing.filechooser.FileSystemView;
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
@@ -46,7 +48,7 @@ public class Apollo {
     public static final Apollo INSTANCE = new Apollo();
 
     public static final EventBus EVENT_BUS = new EventBus();
-    public static final ModuleFactory MODULE_FACTORY = new ModuleFactory("net.apolloclient.module.impl", null);
+    public static final ModuleFactory MODULE_FACTORY = new ModuleFactory("net.apolloclient.module.impl", new File(new File(new File(FileSystemView.getFileSystemView().getDefaultDirectory().getPath()), "Apollo"), "mods"));
 
     public Apollo() {
 
