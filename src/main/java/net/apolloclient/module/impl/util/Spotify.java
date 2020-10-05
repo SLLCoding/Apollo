@@ -6,23 +6,32 @@ import com.wrapper.spotify.SpotifyHttpManager;
 import com.wrapper.spotify.exceptions.SpotifyWebApiException;
 import com.wrapper.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import com.wrapper.spotify.model_objects.miscellaneous.CurrentlyPlayingContext;
+import com.wrapper.spotify.model_objects.specification.ArtistSimplified;
 import com.wrapper.spotify.model_objects.specification.Track;
 import com.wrapper.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
 import net.apolloclient.Apollo;
 import net.apolloclient.event.bus.SubscribeEvent;
+import net.apolloclient.event.impl.client.input.KeyPressedEvent;
 import net.apolloclient.event.impl.hud.GuiSwitchEvent;
 import net.apolloclient.module.bus.Module;
 import net.apolloclient.module.bus.event.InitializationEvent;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.util.ResourceLocation;
 import org.apache.hc.core5.http.ParseException;
+import org.lwjgl.input.Keyboard;
 
+import javax.imageio.ImageIO;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +77,7 @@ public class Spotify {
                 });
                 server.start();
                 Apollo.log("[Spotify] Opening authentication in your browser.");
+                // TODO: Change so they have to link with a button and save the refresh token to use when the client is re-launched.
                 Desktop.getDesktop().browse(authorizationCodeUriRequest.execute());
             } catch (IOException e) {
                 e.printStackTrace();
@@ -101,16 +111,6 @@ public class Spotify {
             ready = true;
 
             Apollo.log("[Spotify] Logged in as: " + api.getCurrentUsersProfile().build().execute().getDisplayName());
-            CurrentlyPlayingContext currentlyPlaying = api.getInformationAboutUsersCurrentPlayback().build().execute();
-            Apollo.log("[Spotify] Currently Playing: " + ((Track) currentlyPlaying.getItem()).getName());
-            Track song = (Track) currentlyPlaying.getItem();
-            int pt = currentlyPlaying.getProgress_ms();
-            int length = song.getDurationMs();
-            double divided = (double) pt / length;
-            double p = divided * 100;
-            int percentage = (int) p;
-            Apollo.log("[Spotify] Current Playthrough: " + currentlyPlaying.getProgress_ms() + "ms");
-            Apollo.log(percentage + "%");
         } catch (IOException | SpotifyWebApiException | ParseException e) {
             e.printStackTrace();
         }
@@ -129,6 +129,109 @@ public class Spotify {
             } catch (NoSuchFieldException | IllegalAccessException e) {
                 e.printStackTrace();
             }
+        }
+        if (ready) {
+            new Thread("Spotify Updater Thread") {
+                @Override
+                public void run() {
+                    try {
+                        CurrentlyPlayingContext context = api.getInformationAboutUsersCurrentPlayback().build().execute();
+                        if (context != null)
+                            currentlyPlaying = (Track) context.getItem();
+
+                        if (context != null && currentlyPlaying != null) {
+                            int pt = context.getProgress_ms();
+                            int length = currentlyPlaying.getDurationMs();
+                            double divided = (double) pt / length;
+                            double p = divided * 100;
+                            percentage = (int) p;
+                            if (previousSong == null) previousSong = "";
+                            if (!previousSong.equals(currentlyPlaying.getId())) {
+                                coverImageBuffer = ImageIO.read(new URL(currentlyPlaying.getAlbum().getImages()[0].getUrl()));
+                                Minecraft.getMinecraft().addScheduledTask(() -> {
+                                    DynamicTexture dynamicTexture = new DynamicTexture(coverImageBuffer);
+                                    coverImage = Minecraft.getMinecraft().getTextureManager().getDynamicTextureLocation("cover.jpg", dynamicTexture);
+                                });
+                                previousSong = currentlyPlaying.getId();
+                            }
+                        } else {
+                            percentage = null;
+                            coverImageBuffer = null;
+                            coverImage = null;
+                            previousSong = "";
+                        }
+                    } catch (IOException | SpotifyWebApiException | ParseException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }.start();
+        }
+    }
+
+    protected static String previousSong;
+    protected static Integer percentage;
+    protected static Track currentlyPlaying;
+    protected static ResourceLocation coverImage;
+    protected static BufferedImage coverImageBuffer;
+
+    @SubscribeEvent
+    public void onKeyPress(KeyPressedEvent event) {
+        if (ready && currentlyPlaying != null) {
+            if (event.keyCode == Keyboard.KEY_H && Minecraft.getMinecraft().currentScreen == null) {
+                Minecraft.getMinecraft().displayGuiScreen(new SpotifyGui());
+            }
+        }
+    }
+
+    public static class SpotifyGui extends GuiScreen {
+
+        @Override
+        public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+            this.drawDefaultBackground();
+            super.drawScreen(mouseX, mouseY, partialTicks);
+            if (currentlyPlaying != null) {
+                this.drawString(
+                        Minecraft.getMinecraft().fontRendererObj,
+                        currentlyPlaying.getName(), 85, 35,
+                        Color.WHITE.getRGB());
+                String authorList;
+                if (currentlyPlaying.getArtists().length == 1) { authorList = currentlyPlaying.getArtists()[0].getName(); }
+                else if (currentlyPlaying.getArtists().length == 2) { authorList = currentlyPlaying.getArtists()[0].getName() + " and " + currentlyPlaying.getArtists()[1].getName(); }
+                else {
+                    StringBuilder authors = new StringBuilder();
+                    int index = 0;
+                    for (ArtistSimplified author : currentlyPlaying.getArtists()) {
+                        if (index == currentlyPlaying.getArtists().length - 1) {
+                            authors.append(" and ").append(author.getName());
+                        } else if (index == currentlyPlaying.getArtists().length - 2) {
+                            authors.append(author.getName());
+                        } else {
+                            authors.append(author.getName()).append(", ");
+                        }
+                        index++;
+                    }
+                    authorList = authors.toString();
+                }
+                this.drawString(
+                        Minecraft.getMinecraft().fontRendererObj,
+                        "By " + authorList, 90, 45,
+                        Color.WHITE.getRGB());
+            }
+            if (coverImage != null && coverImageBuffer != null) {
+                Minecraft.getMinecraft().getTextureManager().bindTexture(coverImage);
+                this.drawTexturedModalRect(10, 10, 156, 16, 64, 64);
+            }
+            if (percentage != null) {
+                int max = 300;
+                int wayThroughPixels = (int) (300 * ((double) percentage / 100));
+                this.drawGradientRect(85, 58, 85 + max, 58 + 10, Color.WHITE.getRGB(), Color.WHITE.getRGB());
+                this.drawGradientRect(85, 58, 85 + wayThroughPixels, 58 + 10, Color.BLACK.getRGB(), Color.BLACK.getRGB());
+            }
+        }
+
+        @Override
+        public boolean doesGuiPauseGame() {
+            return false;
         }
     }
 
