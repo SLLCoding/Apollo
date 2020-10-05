@@ -309,6 +309,7 @@ public class Spotify {
 
         @Override
         protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
+            boolean hasAlreadyUpdated = false;
             if (playing != null) {
                 if (mouseX < 385 && mouseX > 85 && mouseY < 68 && mouseY > 58) {
                     if (hasPremium) {
@@ -325,7 +326,7 @@ public class Spotify {
                             @Override
                             public void run() {
                                 int where = mouseX - 85;
-                                int percentage = (int) (((double) where / 300) * 100);
+                                percentage = (int) (((double) where / 300) * 100);
                                 int durationMs = currentlyPlaying.getDurationMs();
                                 int wayThrough = (int) (((double) percentage / 100) * durationMs);
                                 Apollo.log(wayThrough + "");
@@ -336,10 +337,12 @@ public class Spotify {
                                 }
                             }
                         }.start();
+                        hasAlreadyUpdated = true;
                     }
                 }
             }
-            update();
+            if (!hasAlreadyUpdated)
+                update();
             super.mouseClicked(mouseX, mouseY, mouseButton);
         }
 
