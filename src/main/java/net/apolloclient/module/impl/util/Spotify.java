@@ -308,7 +308,7 @@ public class Spotify {
             if (playing != null) {
                 if (mouseX < 385 && mouseX > 85 && mouseY < 68 && mouseY > 58) {
                     if (hasPremium) {
-                        try {
+                        /*try {
                             if (playing) {
                                 api.startResumeUsersPlayback().build().execute();
                             } else {
@@ -316,7 +316,23 @@ public class Spotify {
                             }
                         } catch (SpotifyWebApiException | ParseException e) {
                             e.printStackTrace();
-                        }
+                        }*/
+                        new Thread("Seek Position on Track") {
+                            @Override
+                            public void run() {
+                                int where = mouseX - 85;
+                                int percentage = (int) (((double) where / 300) * 100);
+                                int durationMs = currentlyPlaying.getDurationMs();
+                                int wayThrough = (int) (((double) percentage / 100) * durationMs);
+                                Apollo.log(wayThrough + "");
+                                try {
+                                    api.seekToPositionInCurrentlyPlayingTrack(wayThrough).build().execute();
+                                } catch (IOException | SpotifyWebApiException | ParseException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        }.start();
+
                     }
                 }
             }
