@@ -152,50 +152,54 @@ public class Spotify {
             }
         }
         if (ready) {
-            new Thread("Spotify Updater Thread") {
-                @Override
-                public void run() {
-                    try {
-                        CurrentlyPlayingContext context =
-                                api.getInformationAboutUsersCurrentPlayback().build().execute();
-                        if (context != null) currentlyPlaying = (Track) context.getItem();
-
-                        if (context != null && currentlyPlaying != null) {
-                            int pt = context.getProgress_ms();
-                            int length = currentlyPlaying.getDurationMs();
-                            double divided = (double) pt / length;
-                            double p = divided * 100;
-                            percentage = (int) p;
-                            if (previousSong == null) previousSong = "";
-                            if (!previousSong.equals(currentlyPlaying.getId())) {
-                                coverImageBuffer =
-                                        ImageIO.read(new URL(currentlyPlaying.getAlbum().getImages()[0].getUrl()));
-                                Minecraft.getMinecraft()
-                                        .addScheduledTask(
-                                                () -> {
-                                                    DynamicTexture dynamicTexture = new DynamicTexture(coverImageBuffer);
-                                                    coverImage =
-                                                            Minecraft.getMinecraft()
-                                                                    .getTextureManager()
-                                                                    .getDynamicTextureLocation("cover.jpg", dynamicTexture);
-                                                });
-                                previousSong = currentlyPlaying.getId();
-                            }
-
-                            playing = context.getIs_playing();
-                        } else {
-                            percentage = null;
-                            coverImageBuffer = null;
-                            coverImage = null;
-                            previousSong = "";
-                            playing = null;
-                        }
-                    } catch (IOException | SpotifyWebApiException | ParseException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }.start();
+            update();
         }
+    }
+
+    private static void update() {
+        new Thread("Spotify Updater Thread") {
+            @Override
+            public void run() {
+                try {
+                    CurrentlyPlayingContext context =
+                            api.getInformationAboutUsersCurrentPlayback().build().execute();
+                    if (context != null) currentlyPlaying = (Track) context.getItem();
+
+                    if (context != null && currentlyPlaying != null) {
+                        int pt = context.getProgress_ms();
+                        int length = currentlyPlaying.getDurationMs();
+                        double divided = (double) pt / length;
+                        double p = divided * 100;
+                        percentage = (int) p;
+                        if (previousSong == null) previousSong = "";
+                        if (!previousSong.equals(currentlyPlaying.getId())) {
+                            coverImageBuffer =
+                                    ImageIO.read(new URL(currentlyPlaying.getAlbum().getImages()[0].getUrl()));
+                            Minecraft.getMinecraft()
+                                    .addScheduledTask(
+                                            () -> {
+                                                DynamicTexture dynamicTexture = new DynamicTexture(coverImageBuffer);
+                                                coverImage =
+                                                        Minecraft.getMinecraft()
+                                                                .getTextureManager()
+                                                                .getDynamicTextureLocation("cover.jpg", dynamicTexture);
+                                            });
+                            previousSong = currentlyPlaying.getId();
+                        }
+
+                        playing = context.getIs_playing();
+                    } else {
+                        percentage = null;
+                        coverImageBuffer = null;
+                        coverImage = null;
+                        previousSong = "";
+                        playing = null;
+                    }
+                } catch (IOException | SpotifyWebApiException | ParseException e) {
+                    e.printStackTrace();
+                }
+            }
+        }.start();
     }
 
     @SubscribeEvent
@@ -332,10 +336,10 @@ public class Spotify {
                                 }
                             }
                         }.start();
-
                     }
                 }
             }
+            update();
             super.mouseClicked(mouseX, mouseY, mouseButton);
         }
 
