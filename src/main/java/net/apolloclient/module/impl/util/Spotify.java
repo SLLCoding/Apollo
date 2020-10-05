@@ -16,6 +16,7 @@ import net.apolloclient.event.impl.client.input.KeyPressedEvent;
 import net.apolloclient.event.impl.hud.GuiSwitchEvent;
 import net.apolloclient.module.bus.Module;
 import net.apolloclient.module.bus.event.InitializationEvent;
+import net.apolloclient.utils.ResizableDynamicTexture;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiMainMenu;
@@ -179,6 +180,7 @@ public class Spotify {
                                     .addScheduledTask(
                                             () -> {
                                                 DynamicTexture dynamicTexture = new DynamicTexture(coverImageBuffer);
+                                                Apollo.log("EE: " + coverImageBuffer.getWidth());
                                                 coverImage =
                                                         Minecraft.getMinecraft()
                                                                 .getTextureManager()
@@ -232,7 +234,7 @@ public class Spotify {
             super.drawScreen(mouseX, mouseY, partialTicks);
             if (coverImage != null && coverImageBuffer != null) {
                 Minecraft.getMinecraft().getTextureManager().bindTexture(coverImage);
-                this.drawTexturedModalRect(10, 10, 156, 16, 64, 64);
+                drawModalRectWithCustomSizedTexture(10, 10, 0, 0, 64, 64, 64, 64);
             }
             if (percentage != null) {
                 int max = 300;
@@ -309,6 +311,7 @@ public class Spotify {
 
         @Override
         protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
+            boolean hasAlreadyUpdated = false;
             if (playing != null) {
                 if (mouseX < 385 && mouseX > 85 && mouseY < 68 && mouseY > 58) {
                     if (hasPremium) {
@@ -325,7 +328,7 @@ public class Spotify {
                             @Override
                             public void run() {
                                 int where = mouseX - 85;
-                                int percentage = (int) (((double) where / 300) * 100);
+                                percentage = (int) (((double) where / 300) * 100);
                                 int durationMs = currentlyPlaying.getDurationMs();
                                 int wayThrough = (int) (((double) percentage / 100) * durationMs);
                                 Apollo.log(wayThrough + "");
@@ -336,10 +339,12 @@ public class Spotify {
                                 }
                             }
                         }.start();
+                        hasAlreadyUpdated = true;
                     }
                 }
             }
-            update();
+            if (!hasAlreadyUpdated)
+                update();
             super.mouseClicked(mouseX, mouseY, mouseButton);
         }
 
