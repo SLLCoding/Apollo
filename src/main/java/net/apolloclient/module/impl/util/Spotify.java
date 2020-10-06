@@ -16,12 +16,12 @@ import net.apolloclient.event.impl.client.input.KeyPressedEvent;
 import net.apolloclient.event.impl.hud.GuiSwitchEvent;
 import net.apolloclient.module.bus.Module;
 import net.apolloclient.module.bus.event.InitializationEvent;
+import net.apolloclient.utils.GLRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.util.IChatComponent;
 import net.minecraft.util.ResourceLocation;
 import org.apache.hc.core5.http.ParseException;
 import org.lwjgl.input.Keyboard;
@@ -58,6 +58,9 @@ public class Spotify {
                     .scope(
                             "user-read-playback-state user-read-currently-playing user-modify-playback-state streaming user-read-private")
                     .build();
+    protected static Integer millisThrough;
+    protected static Integer millisAll;
+
     protected static String previousSong;
     protected static Integer percentage;
     protected static Track currentlyPlaying;
@@ -123,6 +126,21 @@ public class Spotify {
                     }
                 }
             }.start();
+            new Thread("Spotify Timer Updater") {
+                @Override
+                public void run() {
+                    while (true) {
+                        try {
+                            TimeUnit.SECONDS.sleep(1);
+                            if (millisThrough != null)
+                                millisThrough = millisThrough + 1000;
+                            updatePercentage();
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }.start();
 
             ready = true;
 
@@ -166,11 +184,9 @@ public class Spotify {
                     if (context != null) currentlyPlaying = (Track) context.getItem();
 
                     if (context != null && currentlyPlaying != null) {
-                        int pt = context.getProgress_ms();
-                        int length = currentlyPlaying.getDurationMs();
-                        double divided = (double) pt / length;
-                        double p = divided * 100;
-                        percentage = (int) p;
+                        millisThrough = context.getProgress_ms();
+                        millisAll = currentlyPlaying.getDurationMs();
+                        updatePercentage();
                         if (previousSong == null) previousSong = "";
                         if (!previousSong.equals(currentlyPlaying.getId())) {
                             coverImageBuffer =
@@ -194,12 +210,23 @@ public class Spotify {
                         coverImage = null;
                         previousSong = "";
                         playing = null;
+
+                        millisAll = null;
+                        millisThrough = null;
                     }
                 } catch (IOException | SpotifyWebApiException | ParseException e) {
                     e.printStackTrace();
                 }
             }
         }.start();
+    }
+
+    private static void updatePercentage() {
+        if (millisThrough != null && millisAll != null) {
+            double divided = (double) millisThrough / millisAll;
+            double p = divided * 100;
+            percentage = (int) p;
+        }
     }
 
     @SubscribeEvent
@@ -226,6 +253,9 @@ public class Spotify {
 
     public static class SpotifyGui extends GuiScreen {
 
+        private static Color darkGrey = Color.decode("#404040");
+        private static Color lightGrey = Color.decode("#B3B3B3");
+
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
             this.drawDefaultBackground();
@@ -237,17 +267,21 @@ public class Spotify {
             if (percentage != null) {
                 int max = 300;
                 int wayThroughPixels = (int) (300 * ((double) percentage / 100));
-                this.drawGradientRect(
-                        85, 58, 85 + max, 58 + 10, Color.WHITE.getRGB(), Color.WHITE.getRGB());
-                this.drawGradientRect(
-                        85, 58, 85 + wayThroughPixels, 58 + 10, Color.BLACK.getRGB(), Color.BLACK.getRGB());
+                GLRenderer.drawRoundedRectangle(110, 58, max, 4, 2, darkGrey);
+                GLRenderer.drawRoundedRectangle(110, 58, wayThroughPixels, 4, 2, lightGrey);
+            }
+            if (millisThrough != null) {
+                this.drawString(Minecraft.getMinecraft().fontRendererObj, formatMillis(millisThrough), 82, 56, lightGrey.getRGB());
+            }
+            if (millisAll != null) {
+                this.drawString(Minecraft.getMinecraft().fontRendererObj, formatMillis(millisAll), 415, 56, lightGrey.getRGB());
             }
             if (currentlyPlaying != null) {
                 this.drawString(
                         Minecraft.getMinecraft().fontRendererObj,
                         currentlyPlaying.getName(),
                         85,
-                        35,
+                        25,
                         Color.WHITE.getRGB());
                 String authorList;
                 if (currentlyPlaying.getArtists().length == 1) {
@@ -276,34 +310,36 @@ public class Spotify {
                         Minecraft.getMinecraft().fontRendererObj,
                         "By " + authorList,
                         90,
-                        45,
+                        35,
                         Color.WHITE.getRGB());
-                if (mouseX < 385 && mouseX > 85 && mouseY < 68 && mouseY > 58) {
+                if (mouseX < 410 && mouseX > 110 && mouseY < 62 && mouseY > 58) {
                     int where = mouseX - 85;
                     int percentage = (int) (((double) where / 300) * 100);
                     int durationMs = currentlyPlaying.getDurationMs();
                     int wayThrough = (int) (((double) percentage / 100) * durationMs);
                     List<String> text = new ArrayList<>();
-                    if (durationMs >= 3600000) {
-                        text.add(
-                                String.format(
-                                        "%02d:%02d:%02d",
-                                        TimeUnit.MILLISECONDS.toHours(wayThrough),
-                                        TimeUnit.MILLISECONDS.toMinutes(wayThrough)
-                                                - TimeUnit.HOURS.toMinutes(TimeUnit.MILLISECONDS.toHours(wayThrough)),
-                                        TimeUnit.MILLISECONDS.toSeconds(wayThrough)
-                                                - TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(wayThrough))));
-                    } else {
-                        text.add(
-                                String.format(
-                                        "%02d:%02d",
-                                        TimeUnit.MILLISECONDS.toMinutes(wayThrough)
-                                                - TimeUnit.HOURS.toMinutes(TimeUnit.MILLISECONDS.toHours(wayThrough)),
-                                        TimeUnit.MILLISECONDS.toSeconds(wayThrough)
-                                                - TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(wayThrough))));
-                    }
+                    text.add(formatMillis(wayThrough));
                     this.drawHoveringText(text, mouseX, mouseY);
                 }
+            }
+        }
+
+        private static String formatMillis(int millis) {
+            if (millis >= 3600000) {
+                return String.format(
+                        "%02d:%02d:%02d",
+                        TimeUnit.MILLISECONDS.toHours(millis),
+                        TimeUnit.MILLISECONDS.toMinutes(millis)
+                                - TimeUnit.HOURS.toMinutes(TimeUnit.MILLISECONDS.toHours(millis)),
+                        TimeUnit.MILLISECONDS.toSeconds(millis)
+                                - TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(millis)));
+            } else {
+                return String.format(
+                        "%02d:%02d",
+                        TimeUnit.MILLISECONDS.toMinutes(millis)
+                                - TimeUnit.HOURS.toMinutes(TimeUnit.MILLISECONDS.toHours(millis)),
+                        TimeUnit.MILLISECONDS.toSeconds(millis)
+                                - TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(millis)));
             }
         }
 
@@ -344,12 +380,6 @@ public class Spotify {
             if (!hasAlreadyUpdated)
                 update();
             super.mouseClicked(mouseX, mouseY, mouseButton);
-        }
-
-        @Override
-        protected void handleComponentHover(
-                IChatComponent p_175272_1_, int p_175272_2_, int p_175272_3_) {
-            super.handleComponentHover(p_175272_1_, p_175272_2_, p_175272_3_);
         }
 
         @Override
