@@ -232,7 +232,7 @@ public class Spotify {
             super.drawScreen(mouseX, mouseY, partialTicks);
             if (coverImage != null && coverImageBuffer != null) {
                 Minecraft.getMinecraft().getTextureManager().bindTexture(coverImage);
-                this.drawTexturedModalRect(10, 10, 156, 16, 64, 64);
+                drawScaledCustomSizeModalRect(10, 10, 0, 0, 128, 128, 64, 64, 128, 128);
             }
             if (percentage != null) {
                 int max = 300;
