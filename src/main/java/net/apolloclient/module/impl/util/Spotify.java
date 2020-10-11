@@ -253,8 +253,8 @@ public class Spotify {
 
     public static class SpotifyGui extends GuiScreen {
 
-        private static Color darkGrey = Color.decode("#404040");
-        private static Color lightGrey = Color.decode("#B3B3B3");
+        private static final Color darkGrey = Color.decode("#404040");
+        private static final Color lightGrey = Color.decode("#B3B3B3");
 
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
